@@ -1,28 +1,7 @@
-# ==========================================
-# requirements.txt - NER Korupsi Indonesia
-# ==========================================
-
-# ===== Framework Utama =====
-streamlit==1.32.0
-
-# ===== NLP & Machine Learning =====
-transformers==4.38.0
-torch==2.2.0; sys_platform != 'darwin'  # CPU-only untuk Linux/Windows
-torch==2.2.0; sys_platform == 'darwin'  # macOS support
-
-# ===== Data Processing & Visualisasi =====
-pandas==2.2.1
-plotly==5.19.0
-
-# ===== Web Scraping =====
-requests==2.31.0
-beautifulsoup4==4.12.3
-
-# ===== Dependencies Tambahan (Opsional tapi Direkomendasikan) =====
-numpy==1.26.4  # Required by pandas/transformers
-scipy==1.12.0  # Required by transformers
-sentencepiece==0.1.99  # Required by some BERT models
-protobuf==4.25.3  # Required by transformers
-huggingface-hub==0.21.4  # Required by transformers
-safetensors==0.4.2  # Required by transformers
-tokenizers==0.15.2  # Required by transformers
+streamlit>=1.28.0
+transformers>=4.35.0
+torch>=2.0.0
+pandas>=1.5.0
+plotly>=5.15.0
+requests>=2.28.0
+beautifulsoup4>=4.11.0
