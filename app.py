@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 import requests
 from bs4 import BeautifulSoup
 import torch
+from zoneinfo import ZoneInfo
 
 # ==========================================
 # KONFIGURASI PERSISTENCE (PENYIMPANAN DATA)
@@ -797,7 +798,9 @@ elif menu == "📊 Analisis":
             analyze_manual = st.button("🚀 Analisis Teks", type="primary", use_container_width=True)
         
         if analyze_manual and teks_berita.strip():
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # REVISI: Mengunci zona waktu ke WIB (Asia/Jakarta)
+            timestamp = datetime.now(ZoneInfo("Asia/Jakarta")).strftime("%Y-%m-%d %H:%M:%S")
+
             source_type = "Manual"
             text_preview = teks_berita[:100] + "..." if len(teks_berita) > 100 else teks_berita
             
@@ -865,7 +868,9 @@ elif menu == "📊 Analisis":
             analyze_url = st.button("🌐 Analisis URL", type="primary", use_container_width=True)
         
         if analyze_url and url_input.strip():
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # REVISI: Mengunci zona waktu ke WIB (Asia/Jakarta)
+            timestamp = datetime.now(ZoneInfo("Asia/Jakarta")).strftime("%Y-%m-%d %H:%M:%S")
+
             source_type = "URL"
             
             with st.spinner("🔄 Mengambil dan menganalisis artikel dari URL..."):
