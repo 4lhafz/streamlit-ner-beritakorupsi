@@ -1,5 +1,5 @@
 import streamlit as st
-from transformers import pipeline
+from transformers import pipeline, AutoTokenizer, AutoModelForTokenClassification
 import pandas as pd
 import json
 import os
@@ -9,6 +9,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import requests
 from bs4 import BeautifulSoup
+import torch
 
 # ==========================================
 # KONFIGURASI PERSISTENCE (PENYIMPANAN DATA)
@@ -34,7 +35,7 @@ def save_history_to_file(history):
 # 1. KONFIGURASI HALAMAN & TEMA MODERN
 # ==========================================
 st.set_page_config(
-    page_title="✨ NER Korupsi Indonesia | Advanced NLP",
+    page_title="✨ Nerkor",
     page_icon="🇮🇩",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -50,10 +51,8 @@ st.set_page_config(
 # ==========================================
 st.markdown("""
 <style>
-    /* Import Google Fonts */
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
     
-    /* ===== GLOBAL STYLING ===== */
     .main {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 30%, #f093fb 70%, #f5576c 100%);
         background-size: 400% 400%;
@@ -73,7 +72,6 @@ st.markdown("""
         backdrop-filter: blur(10px);
     }
     
-    /* ===== ANIMATED HEADER ===== */
     .main-header {
         background: linear-gradient(135deg, rgba(102,126,234,0.95) 0%, rgba(118,75,162,0.95) 100%);
         padding: 2.5rem 2rem;
@@ -90,22 +88,6 @@ st.markdown("""
     @keyframes slideDown {
         from { opacity: 0; transform: translateY(-30px); }
         to { opacity: 1; transform: translateY(0); }
-    }
-    
-    .main-header::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        left: -50%;
-        width: 200%;
-        height: 200%;
-        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-        animation: pulse 4s ease-in-out infinite;
-    }
-    
-    @keyframes pulse {
-        0%, 100% { transform: scale(1); opacity: 0.5; }
-        50% { transform: scale(1.1); opacity: 0.8; }
     }
     
     .main-header h1 {
@@ -132,7 +114,6 @@ st.markdown("""
         animation: fadeInUp 0.8s ease-out 0.2s both;
     }
     
-    /* ===== GLASSMORPHISM CARDS ===== */
     .metric-card {
         background: rgba(255, 255, 255, 0.85);
         backdrop-filter: blur(20px);
@@ -152,21 +133,6 @@ st.markdown("""
     @keyframes cardEntrance {
         from { opacity: 0; transform: scale(0.95) translateY(20px); }
         to { opacity: 1; transform: scale(1) translateY(0); }
-    }
-    
-    .metric-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-        transition: left 0.6s ease;
-    }
-    
-    .metric-card:hover::before {
-        left: 100%;
     }
     
     .metric-card:hover {
@@ -197,7 +163,6 @@ st.markdown("""
         font-weight: 500;
     }
     
-    /* ===== ENTITY BOX WITH ANIMATIONS ===== */
     .entity-box {
         background: rgba(255, 255, 255, 0.9);
         backdrop-filter: blur(10px);
@@ -270,7 +235,6 @@ st.markdown("""
         box-shadow: 0 2px 8px rgba(106, 27, 154, 0.15);
     }
     
-    /* ===== ANIMATED BUTTONS ===== */
     .stButton > button {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
         background-size: 200% 200%;
@@ -286,32 +250,12 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
     }
     
-    .stButton > button::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-        transition: left 0.5s ease;
-    }
-    
-    .stButton > button:hover::before {
-        left: 100%;
-    }
-    
     .stButton > button:hover {
         transform: translateY(-3px) scale(1.03);
         box-shadow: 0 12px 35px rgba(102, 126, 234, 0.6);
         background-position: 100% 100%;
     }
     
-    .stButton > button:active {
-        transform: translateY(-1px) scale(0.98);
-    }
-    
-    /* ===== TEXTAREA & INPUT STYLING ===== */
     .stTextArea textarea, .stTextInput input {
         border-radius: 16px !important;
         border: 2px solid rgba(102, 126, 234, 0.2) !important;
@@ -327,14 +271,12 @@ st.markdown("""
         transform: scale(1.01);
     }
     
-    /* ===== SIDEBAR STYLING ===== */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,249,250,0.98) 100%);
         backdrop-filter: blur(20px);
         border-right: 1px solid rgba(102, 126, 234, 0.1);
     }
     
-    /* ===== TABS STYLING ===== */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background: rgba(255,255,255,0.5);
@@ -343,20 +285,12 @@ st.markdown("""
         backdrop-filter: blur(10px);
     }
     
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 12px !important;
-        padding: 12px 24px !important;
-        font-weight: 500 !important;
-        transition: all 0.3s ease !important;
-    }
-    
     .stTabs [aria-selected="true"] {
         background: linear-gradient(135deg, #667eea, #764ba2) !important;
         color: white !important;
         box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
     }
     
-    /* ===== INFO BOX ===== */
     .info-box {
         background: linear-gradient(135deg, rgba(227,242,253,0.9), rgba(187,222,251,0.9));
         padding: 1.2rem;
@@ -364,7 +298,6 @@ st.markdown("""
         border-left: 5px solid #2196f3;
         margin: 1.2rem 0;
         animation: fadeIn 0.5s ease-out;
-        box-shadow: 0 4px 20px rgba(33, 150, 243, 0.15);
     }
     
     @keyframes fadeIn {
@@ -372,7 +305,6 @@ st.markdown("""
         to { opacity: 1; transform: translateY(0); }
     }
     
-    /* ===== LOADING ANIMATION ===== */
     .loading-dots {
         display: inline-flex;
         gap: 4px;
@@ -394,7 +326,6 @@ st.markdown("""
         40% { transform: scale(1.2); opacity: 1; }
     }
     
-    /* ===== DECORATIVE ELEMENTS ===== */
     .floating-icon {
         animation: float 3s ease-in-out infinite;
         display: inline-block;
@@ -416,7 +347,6 @@ st.markdown("""
         100% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0); }
     }
     
-    /* ===== URL INPUT BOX ===== */
     .url-input {
         background: rgba(255, 255, 255, 0.9);
         backdrop-filter: blur(10px);
@@ -438,7 +368,6 @@ st.markdown("""
         transform: translateY(-2px);
     }
     
-    /* ===== SUCCESS/ERROR MESSAGES ===== */
     .stSuccess, .stError, .stWarning, .stInfo {
         border-radius: 14px !important;
         border-left: 5px solid !important;
@@ -450,7 +379,6 @@ st.markdown("""
         to { opacity: 1; transform: translateX(0); }
     }
     
-    /* ===== FOOTER ===== */
     .app-footer {
         text-align: center;
         padding: 2.5rem 2rem 1.5rem;
@@ -459,11 +387,8 @@ st.markdown("""
         animation: fadeIn 1s ease-out 0.5s both;
     }
     
-    .app-footer p {
-        margin: 0.3rem 0;
-    }
+    .app-footer p { margin: 0.3rem 0; }
     
-    /* ===== RESPONSIVE ADJUSTMENTS ===== */
     @media (max-width: 768px) {
         .main-header h1 { font-size: 2rem; }
         .main-header p { font-size: 1rem; }
@@ -471,30 +396,13 @@ st.markdown("""
         .metric-card { padding: 1.2rem 1rem; }
     }
     
-    /* ===== SMOOTH SCROLL ===== */
-    html {
-        scroll-behavior: smooth;
-    }
+    html { scroll-behavior: smooth; }
     
-    /* ===== CUSTOM SCROLLBAR ===== */
-    ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-    }
-    
-    ::-webkit-scrollbar-track {
-        background: rgba(255,255,255,0.3);
-        border-radius: 10px;
-    }
-    
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(255,255,255,0.3); border-radius: 10px; }
     ::-webkit-scrollbar-thumb {
         background: linear-gradient(135deg, #667eea, #764ba2);
         border-radius: 10px;
-        transition: background 0.3s ease;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-        background: linear-gradient(135deg, #5568d3, #683c9e);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -508,19 +416,94 @@ if 'current_results' not in st.session_state:
     st.session_state.current_results = None
 
 # ==========================================
-# 4. MEMUAT MODEL INDOBERT NER
+# 4. MEMUAT MODEL CUSTOM NER (TANPA FALLBACK)
 # ==========================================
 @st.cache_resource
-def load_model():
-    return pipeline(
-        "ner", 
-        model="cahya/bert-base-indonesian-NER", 
-        aggregation_strategy="simple",
-        device=-1
-    )
+def load_custom_model():
+    """
+    Load HANYA model custom dari folder 'models' - TANPA FALLBACK
+    Jika model tidak ditemukan atau gagal load, aplikasi akan berhenti
+    """
+    # 🔑 KONFIGURASI MODEL CUSTOM - SESUAIKAN DENGAN HASIL TRAINING ANDA
+    MODEL_FOLDER = "models"  # Nama folder model
+    CHECKPOINT_NUMBER = 80 # Checkpoint terbaik (sesuaikan dengan training Anda)
+    
+    custom_model_path = os.path.join(MODEL_FOLDER, f"checkpoint-{CHECKPOINT_NUMBER}")
+    
+    # Validasi: Folder model harus ada
+    if not os.path.exists(custom_model_path):
+        st.error(f"""
+        ❌ **Model Custom Tidak Ditemukan!**
+        
+        Path yang dicari: `{custom_model_path}`
+        
+        **Solusi:**
+        1. Pastikan folder `models/` ada di direktori yang sama dengan app.py
+        2. Pastikan checkpoint-{CHECKPOINT_NUMBER} sudah di-extract di dalam folder models/
+        3. File yang harus ada: config.json, model.safetensors (atau pytorch_model.bin), tokenizer.json
+        """)
+        st.stop()
+    
+    # Validasi: File konfigurasi model harus ada
+    required_files = ['config.json', 'tokenizer.json', 'tokenizer_config.json']
+    missing_files = [f for f in required_files if not os.path.exists(os.path.join(custom_model_path, f))]
+    
+    if missing_files:
+        st.error(f"""
+        ❌ **File Model Tidak Lengkap!**
+        
+        File yang hilang: {', '.join(missing_files)}
+        
+        **Solusi:**
+        1. Pastikan semua file hasil training sudah di-copy ke folder checkpoint
+        2. Gunakan `model.save_pretrained()` dan `tokenizer.save_pretrained()` saat export dari Colab
+        """)
+        st.stop()
+    
+    try:
+        with st.spinner(f"🔄 Memuat model custom dari: {custom_model_path}"):
+            # Load tokenizer dan model
+            tokenizer = AutoTokenizer.from_pretrained(custom_model_path)
+            model = AutoModelForTokenClassification.from_pretrained(custom_model_path)
+            
+            # Buat pipeline NER
+            nlp_pipeline = pipeline(
+                "ner",
+                model=model,
+                tokenizer=tokenizer,
+                aggregation_strategy="simple",
+                device=-1  # CPU (ubah ke 0 jika ada GPU)
+            )
+            
+            return nlp_pipeline
+            
+    except Exception as e:
+        st.error(f"""
+        ❌ **Gagal Memuat Model Custom!**
+        
+        Error: {str(e)}
+        
+        **Kemungkinan Penyebab:**
+        1. File model corrupt atau tidak kompatibel
+        2. Versi transformers tidak sesuai dengan saat training
+        3. Missing dependencies
+        
+        **Solusi:**
+        1. Pastikan requirements.txt sudah terinstall: `pip install -r requirements.txt`
+        2. Cek versi transformers: harus sama dengan saat training di Colab
+        3. Re-export model dari Colab dengan `save_pretrained()`
+        """)
+        import traceback
+        st.code(traceback.format_exc())
+        st.stop()
 
-with st.spinner("✨ Memuat model AI IndoBERT..."):
-    nlp_ner = load_model()
+# Load model custom saat aplikasi dimulai (TANPA FALLBACK)
+with st.spinner("✨ Memuat model custom NER... Mohon tunggu..."):
+    nlp_ner = load_custom_model()
+
+# Simpan status model di session state
+if 'model_loaded' not in st.session_state:
+    st.session_state.model_loaded = True
 
 # ==========================================
 # 5. FUNGSI HELPER
@@ -535,9 +518,7 @@ def truncate_text_for_bert(text, max_words=350):
 def extract_article_from_url(url):
     """Ekstrak konten artikel dari URL berita"""
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
         
@@ -546,9 +527,7 @@ def extract_article_from_url(url):
         for element in soup(['script', 'style', 'nav', 'footer', 'header', 'iframe']):
             element.decompose()
         
-        title = soup.find('h1')
-        if not title:
-            title = soup.find('title')
+        title = soup.find('h1') or soup.find('title')
         title_text = title.get_text().strip() if title else "Artikel Tanpa Judul"
         
         content_selectors = [
@@ -563,11 +542,7 @@ def extract_article_from_url(url):
         
         content = ""
         for selector in content_selectors:
-            if selector['class']:
-                element = soup.find(selector['tag'], class_=selector['class'])
-            else:
-                element = soup.find(selector['tag'])
-            
+            element = soup.find(selector['tag'], class_=selector['class']) if selector['class'] else soup.find(selector['tag'])
             if element:
                 paragraphs = element.find_all('p')
                 content = ' '.join([p.get_text().strip() for p in paragraphs if p.get_text().strip()])
@@ -588,34 +563,47 @@ def extract_article_from_url(url):
         return None, f"❌ Error parsing: {str(e)}"
 
 def extract_entities(text):
-    """Ekstraksi entitas dari teks"""
-    results = nlp_ner(text)
+    """Ekstraksi entitas dari teks menggunakan custom model"""
+    if nlp_ner is None:
+        st.error("❌ Model tidak tersedia!")
+        return {}, {}, []
     
-    individuals = {}
-    organizations = {}
-    
-    for entity in results:
-        word = entity['word'].strip()
-        score = float(entity['score'])  # Konversi ke float native Python
+    try:
+        results = nlp_ner(text)
         
-        if entity['entity_group'] == 'PER':
-            if word not in individuals:
-                individuals[word] = score
-            else:
-                individuals[word] = float(max(individuals[word], score))
-        elif entity['entity_group'] == 'ORG':
-            if word not in organizations:
-                organizations[word] = score
-            else:
-                organizations[word] = float(max(organizations[word], score))
-    
-    return individuals, organizations, results
+        individuals = {}
+        organizations = {}
+        
+        for entity in results:
+            word = entity['word'].strip()
+            entity_group = entity.get('entity_group', '')
+            score = float(entity['score'])
+            
+            # Mapping label sesuai output custom model Anda
+            # Sesuaikan dengan label yang digunakan saat training
+            if entity_group in ['PER', 'PERSON', 'per', 'person', 'I-PER', 'B-PER']:
+                if word and word not in individuals:
+                    individuals[word] = score
+                elif word and score > individuals.get(word, 0):
+                    individuals[word] = score
+            
+            elif entity_group in ['ORG', 'ORGANIZATION', 'org', 'organization', 'I-ORG', 'B-ORG']:
+                if word and word not in organizations:
+                    organizations[word] = score
+                elif word and score > organizations.get(word, 0):
+                    organizations[word] = score
+        
+        return individuals, organizations, results
+        
+    except Exception as e:
+        st.error(f"❌ Error saat ekstraksi: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
+        return {}, {}, []
 
 def create_visualization(individuals, organizations):
     """Buat visualisasi interaktif dengan animasi Plotly"""
-    all_entities = []
-    all_scores = []
-    all_types = []
+    all_entities, all_scores, all_types = [], [], []
     
     for name, score in individuals.items():
         all_entities.append(name)
@@ -631,19 +619,15 @@ def create_visualization(individuals, organizations):
         return None, None
     
     fig_bar = px.bar(
-        x=all_entities,
-        y=all_scores,
-        color=all_types,
+        x=all_entities, y=all_scores, color=all_types,
         title='📊 Confidence Score Entitas',
         labels={'x': 'Entitas', 'y': 'Confidence Score'},
         color_discrete_map={'Individu': '#667eea', 'Instansi': '#764ba2'},
         height=400
     )
     fig_bar.update_layout(
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        showlegend=True,
-        hovermode='x unified',
+        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+        showlegend=True, hovermode='x unified',
         font=dict(family='Inter, sans-serif'),
         transition=dict(duration=500, easing='cubic-in-out')
     )
@@ -655,17 +639,8 @@ def create_visualization(individuals, organizations):
         color_discrete_map={'Individu': '#667eea', 'Instansi': '#764ba2'},
         hole=0.4
     )
-    fig_pie.update_traces(
-        textposition='inside', 
-        textinfo='percent+label',
-        hoverinfo='label+percent+value',
-        marker=dict(line=dict(color='#fff', width=2))
-    )
-    fig_pie.update_layout(
-        height=400,
-        font=dict(family='Inter, sans-serif'),
-        transition=dict(duration=500)
-    )
+    fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+    fig_pie.update_layout(height=400, font=dict(family='Inter, sans-serif'))
     
     return fig_bar, fig_pie
 
@@ -673,37 +648,22 @@ def export_to_csv(individuals, organizations, timestamp, source="Manual"):
     """Export hasil ke CSV"""
     data = []
     for name, score in individuals.items():
-        data.append({
-            'Timestamp': timestamp,
-            'Source': source,
-            'Entitas': name,
-            'Tipe': 'PERSON',
-            'Confidence Score': score
-        })
+        data.append({'Timestamp': timestamp, 'Source': source, 'Entitas': name, 'Tipe': 'PERSON', 'Confidence Score': score})
     for name, score in organizations.items():
-        data.append({
-            'Timestamp': timestamp,
-            'Source': source,
-            'Entitas': name,
-            'Tipe': 'ORGANIZATION',
-            'Confidence Score': score
-        })
+        data.append({'Timestamp': timestamp, 'Source': source, 'Entitas': name, 'Tipe': 'ORGANIZATION', 'Confidence Score': score})
     
     df = pd.DataFrame(data)
     return df.to_csv(index=False).encode('utf-8-sig')
 
 # ==========================================
-# 6. SIDEBAR DENGAN ANIMASI
+# 6. SIDEBAR DENGAN INFO MODEL CUSTOM
 # ==========================================
 with st.sidebar:
     st.markdown("""
     <div style='text-align: center; padding: 1.5rem 1rem;'>
         <div class='floating-icon' style='font-size: 3.5rem;'>🇮🇩</div>
-        <h3 style='color: #667eea; margin: 0.8rem 0; font-weight: 700;'>✨ NER Korupsi</h3>
+        <h3 style='color: #667eea; margin: 0.8rem 0; font-weight: 700;'>✨ Nerkor</h3>
         <p style='font-size: 0.85rem; color: #666;'>Advanced NLP System</p>
-        <div class='pulse-badge' style='display:inline-block; padding:4px 12px; background:linear-gradient(135deg,#667eea,#764ba2); color:white; border-radius:20px; font-size:0.7rem; margin-top:8px;'>
-            🔥 Live
-        </div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -717,16 +677,6 @@ with st.sidebar:
     
     st.divider()
     
-    st.markdown("### 📌 Informasi Sistem")
-    st.markdown("""
-    <div class='info-box'>
-        <strong>🤖 Model:</strong> IndoBERT NER<br>
-        <strong>🎯 Entitas:</strong> PERSON, ORGANIZATION<br>
-        <strong>🗣️ Bahasa:</strong> Indonesia<br>
-        <strong>📰 Domain:</strong> Berita Korupsi
-    </div>
-    """, unsafe_allow_html=True)
-    
     if len(st.session_state.analysis_history) > 0:
         st.markdown("### 📈 Statistik Cepat")
         total_analisis = len(st.session_state.analysis_history)
@@ -736,8 +686,7 @@ with st.sidebar:
     
     st.markdown("""
     <div style='text-align: center; padding: 1rem; font-size: 0.8rem; color: #888;'>
-        <p>✨ Proyek NLP - 2026</p>
-        <p>Powered by <strong>IndoBERT</strong> & <strong>Streamlit</strong></p>
+        <p>© 2026 - Kelompok 4</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -749,19 +698,18 @@ if menu == "🏠 Beranda":
     st.markdown("""
     <div class='main-header'>
         <h1>🇮🇩 Ekstraksi Entitas Berita Korupsi</h1>
-        <p>Named Entity Recognition dengan IndoBERT untuk Analisis Cerdas Berita Korupsi Indonesia</p>
+        <p>Named Entity Recognition dengan Custom Model IndoBERT untuk Analisis Cerdas Berita Korupsi Indonesia</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Fitur Utama dengan Animasi Staggered
     col1, col2, col3 = st.columns(3)
     
     with col1:
         st.markdown("""
         <div class='metric-card' style='animation-delay: 0.1s;'>
             <div style='font-size: 3.5rem; margin-bottom: 0.5rem;'>🤖</div>
-            <h3 style='color: #667eea; margin: 0.5rem 0;'>AI-Powered</h3>
-            <p style='color: #666; line-height: 1.5;'>Menggunakan model IndoBERT state-of-the-art untuk akurasi ekstraksi tertinggi</p>
+            <h3 style='color: #667eea; margin: 0.5rem 0;'>Custom AI Model</h3>
+            <p style='color: #666; line-height: 1.5;'>Model IndoBERT yang telah di-fine-tune khusus untuk domain berita korupsi Indonesia</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -785,12 +733,11 @@ if menu == "🏠 Beranda":
     
     st.markdown("<div style='height: 2rem;'></div>", unsafe_allow_html=True)
     
-    # Cara Penggunaan dengan Animasi
     st.markdown("### 📖 Panduan Penggunaan")
     
     steps = [
         ("1️⃣", "Input Teks/URL", "Tempel teks berita korupsi ATAU masukkan link artikel dari situs berita terpercaya"),
-        ("2️⃣", "Klik Analisis", "Tekan tombol '🚀 Analisis' untuk memulai proses ekstraksi entitas dengan AI"),
+        ("2️⃣", "Klik Analisis", "Tekan tombol '🚀 Analisis' untuk memulai proses ekstraksi entitas dengan custom model"),
         ("3️⃣", "Lihat Hasil", "Periksa daftar individu dan instansi yang terdeteksi beserta confidence score"),
         ("4️⃣", "Export Data", "Unduh hasil analisis dalam format CSV untuk keperluan dokumentasi")
     ]
@@ -811,7 +758,6 @@ if menu == "🏠 Beranda":
     
     st.markdown("<div style='height: 2rem;'></div>", unsafe_allow_html=True)
     
-    # Contoh Teks dengan Expander Animasi
     st.markdown("### 💡 Contoh Input")
     
     with st.expander("📝 Klik untuk melihat contoh teks & URL"):
@@ -836,71 +782,98 @@ elif menu == "📊 Analisis":
     st.markdown("""
     <div class='main-header'>
         <h1>🔍 Analisis Teks Berita</h1>
-        <p>Ekstraksi entitas individu dan instansi dengan teknologi NLP terkini</p>
+        <p>Ekstraksi entitas individu dan instansi dengan custom model NLP</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Tab Input dengan Animasi
     tab_manual, tab_url = st.tabs(["✍️ Input Manual", "🌐 Dari URL"])
     
-    analyzed = False
     individuals, organizations = {}, {}
     timestamp = ""
     source_type = "Manual"
     text_preview = ""
+    analysis_done = False
     
     with tab_manual:
-        st.markdown("""
-        <div style='background: rgba(255,255,255,0.8); padding: 1.5rem; border-radius: 16px; margin-bottom: 1rem; border: 1px solid rgba(102,126,234,0.2);'>
-            <strong>📄 Masukkan Teks Berita:</strong><br>
-            <small style='color: #666;'>Salin dan tempel konten artikel berita korupsi yang ingin dianalisis</small>
-        </div>
-        """, unsafe_allow_html=True)
-        
         teks_berita = st.text_area(
-            label="",
-            height=280,
-            placeholder="Contoh: KPK menjadwalkan pemeriksaan terhadap mantan pejabat Kementerian Keuangan, Rafael Alun Trisambodo, terkait dugaan korupsi pajak...",
-            key="manual_text",
-            label_visibility="collapsed"
+            label="📄 Teks Berita Korupsi:",
+            height=300,
+            placeholder="Contoh: KPK menjadwalkan pemeriksaan terhadap mantan pejabat...",
+            key="manual_text"
         )
         
         col_opt1, col_opt2 = st.columns([2, 1])
         with col_opt1:
-            show_confidence = st.checkbox("✨ Tampilkan Confidence Score", value=True, key="chk_manual")
-            auto_visualize = st.checkbox("📈 Auto Visualisasi", value=True, key="viz_manual")
+            show_confidence = st.checkbox("Tampilkan Score", value=True, key="chk_manual")
+            auto_visualize = st.checkbox("Auto Visualisasi", value=True, key="viz_manual")
         with col_opt2:
-            analyze_manual = st.button("🚀 Analisis Sekarang", type="primary", use_container_width=True)
+            analyze_manual = st.button("🚀 Analisis Teks", type="primary", use_container_width=True)
         
         if analyze_manual and teks_berita.strip():
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             source_type = "Manual"
             text_preview = teks_berita[:100] + "..." if len(teks_berita) > 100 else teks_berita
             
-            with st.spinner("<div class='loading-dots'><span></span><span></span><span></span></div> AI sedang menganalisis..."):
-                teks_processed = truncate_text_for_bert(teks_berita, max_words=350)
-                individuals, organizations, _ = extract_entities(teks_processed)
-                analyzed = True
-                
+            with st.spinner("🔄 Custom model sedang menganalisis teks..."):
+                try:
+                    teks_processed = truncate_text_for_bert(teks_berita, max_words=350)
+                    individuals, organizations, raw_results = extract_entities(teks_processed)
+                    
+                    if not individuals and not organizations:
+                        st.warning("""
+                        ⚠️ **Tidak ada entitas terdeteksi.**
+                        
+                        Kemungkinan penyebab:
+                        - Teks tidak mengandung nama orang/instansi yang jelas
+                        - Format teks berbeda dengan data training
+                        - Model memerlukan teks yang lebih panjang/kontekstual
+                        
+                        💡 **Tips:** Gunakan teks berita formal dengan nama lengkap dan instansi yang jelas.
+                        """)
+                    
+                    analysis_done = True
+                    
+                    st.session_state.current_results = {
+                        'timestamp': timestamp, 'source': source_type, 'text': teks_berita,
+                        'individuals': individuals, 'organizations': organizations
+                    }
+                    
+                    st.session_state.analysis_history.append({
+                        'timestamp': timestamp, 'source': source_type,
+                        'individuals': individuals, 'organizations': organizations,
+                        'individuals_count': len(individuals), 'organizations_count': len(organizations),
+                        'text_preview': text_preview
+                    })
+                    
+                    save_history_to_file(st.session_state.analysis_history)
+                    
+                except Exception as e:
+                    st.error(f"❌ Error saat analisis: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+                    st.stop()
+        
+        elif analyze_manual and not teks_berita.strip():
+            st.warning("⚠️ Silakan masukkan teks berita terlebih dahulu!")
+    
     with tab_url:
         st.markdown("""
         <div class='url-input'>
             <strong>🔗 Masukkan Link Berita:</strong><br>
-            <small style='color: #666;'>Mendukung: Kompas, Detik, Tempo, CNN Indonesia, dan situs berita umum</small>
+            <small>Mendukung: Kompas, Detik, Tempo, CNN Indonesia, dan situs berita umum</small>
         </div>
         """, unsafe_allow_html=True)
         
         url_input = st.text_input(
-            label="",
+            label="URL Artikel Berita:",
             placeholder="https://www.kompas.com/nasional/read/2024/...",
-            key="url_input",
-            label_visibility="collapsed"
+            key="url_input"
         )
         
         col_opt3, col_opt4 = st.columns([2, 1])
         with col_opt3:
-            show_confidence_url = st.checkbox("✨ Tampilkan Confidence Score", value=True, key="chk_url")
-            auto_visualize_url = st.checkbox("📈 Auto Visualisasi", value=True, key="viz_url")
+            show_confidence_url = st.checkbox("Tampilkan Score", value=True, key="chk_url")
+            auto_visualize_url = st.checkbox("Auto Visualisasi", value=True, key="viz_url")
         with col_opt4:
             analyze_url = st.button("🌐 Analisis URL", type="primary", use_container_width=True)
         
@@ -908,46 +881,77 @@ elif menu == "📊 Analisis":
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             source_type = "URL"
             
-            with st.spinner("<div class='loading-dots'><span></span><span></span><span></span></div> Mengambil & menganalisis artikel..."):
-                title, content = extract_article_from_url(url_input)
-                
-                if content and "Error" not in content:
-                    text_preview = f"[{title}] {content[:50]}..."
-                    individuals, organizations, _ = extract_entities(content)
-                    analyzed = True
+            with st.spinner("🔄 Mengambil dan menganalisis artikel dari URL..."):
+                try:
+                    title, content = extract_article_from_url(url_input)
                     
-                    with st.expander("📰 Preview Artikel"):
-                        st.markdown(f"**Judul:** {title}")
-                        st.markdown(f"**Panjang:** {len(content)} karakter")
-                        st.markdown(f"**Preview:** {content[:250]}...")
-                else:
-                    st.error(content)
+                    if content and "Error" not in content and len(content.strip()) > 50:
+                        text_preview = f"[{title}] {content[:50]}..."
+                        
+                        individuals, organizations, raw_results = extract_entities(content)
+                        
+                        if not individuals and not organizations:
+                            st.warning("""
+                            ⚠️ **Tidak ada entitas terdeteksi dari URL.**
+                            
+                            Kemungkinan penyebab:
+                            - Konten artikel tidak mengandung nama jelas
+                            - Struktur HTML artikel tidak didukung scraper
+                            - Model memerlukan konteks yang lebih spesifik
+                            """)
+                        
+                        analysis_done = True
+                        
+                        st.session_state.current_results = {
+                            'timestamp': timestamp, 'source': source_type, 'text': content,
+                            'individuals': individuals, 'organizations': organizations
+                        }
+                        
+                        st.session_state.analysis_history.append({
+                            'timestamp': timestamp, 'source': source_type,
+                            'individuals': individuals, 'organizations': organizations,
+                            'individuals_count': len(individuals), 'organizations_count': len(organizations),
+                            'text_preview': text_preview
+                        })
+                        
+                        save_history_to_file(st.session_state.analysis_history)
+                        
+                        with st.expander("📰 Preview Artikel yang Diekstrak"):
+                            st.markdown(f"**Judul:** {title}")
+                            st.markdown(f"**Panjang:** {len(content)} karakter")
+                            st.markdown(f"**Preview:** {content[:300]}...")
+                            
+                    elif "Error" in content:
+                        st.error(content)
+                    else:
+                        st.warning("⚠️ Konten artikel terlalu pendek atau tidak valid.")
+                        
+                except Exception as e:
+                    st.error(f"❌ Error saat analisis URL: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
+                    st.stop()
+        
+        elif analyze_url and not url_input.strip():
+            st.warning("⚠️ Silakan masukkan URL terlebih dahulu!")
     
-    # Tampilkan Hasil dengan Animasi
-    if analyzed and (individuals or organizations):
-        st.session_state.current_results = {
-            'timestamp': timestamp,
-            'source': source_type,
-            'individuals': individuals,
-            'organizations': organizations
-        }
-        
-        st.session_state.analysis_history.append({
-            'timestamp': timestamp,
-            'source': source_type,
-            'individuals': individuals,
-            'organizations': organizations,
-            'individuals_count': len(individuals),
-            'organizations_count': len(organizations),
-            'text_preview': text_preview
-        })
-        
-        save_history_to_file(st.session_state.analysis_history)
-        
+    if analysis_done:
         st.success("✨ Analisis Berhasil! Data telah disimpan ke riwayat.")
         st.divider()
         
-        # Ringkasan Statistik Animasi
+        # Debug info - opsional, bisa di-collapse
+        with st.expander("🔧 Debug Info", expanded=False):
+            st.write(f"**Sumber:** {source_type}")
+            st.write(f"**Jumlah Individu:** {len(individuals)}")
+            st.write(f"**Jumlah Instansi:** {len(organizations)}")
+            if raw_results:
+                st.write(f"**Total entities dari model:** {len(raw_results)}")
+                st.write("**Sample raw output:**", raw_results[:3] if len(raw_results) >= 3 else raw_results)
+            if individuals:
+                st.write("**Individu terdeteksi:**", list(individuals.keys())[:5])
+            if organizations:
+                st.write("**Instansi terdeteksi:**", list(organizations.keys())[:5])
+        
         st.markdown("### 📊 Ringkasan Hasil")
         col_stat1, col_stat2, col_stat3 = st.columns(3)
         
@@ -976,7 +980,6 @@ elif menu == "📊 Analisis":
             </div>
             """, unsafe_allow_html=True)
         
-        # Visualisasi Animasi
         show_conf = show_confidence if source_type == "Manual" else show_confidence_url
         auto_viz = auto_visualize if source_type == "Manual" else auto_visualize_url
         
@@ -992,22 +995,22 @@ elif menu == "📊 Analisis":
                     st.plotly_chart(fig_bar, use_container_width=True)
                 with col_viz2:
                     st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("ℹ️ Tidak ada data untuk divisualisasikan.")
         
         st.divider()
         
-        # Detail Entitas dengan Animasi Staggered
         col_ind, col_org = st.columns(2)
         
         with col_ind:
-            st.markdown("### 👤 Daftar Individu")
+            st.markdown("### 👤 Daftar Individu (PERSON)")
             if individuals:
-                for idx, (nama, score) in enumerate(sorted(individuals.items(), key=lambda x: x[1], reverse=True)):
-                    delay = min(idx * 0.1, 0.5)
+                for nama, score in sorted(individuals.items(), key=lambda x: x[1], reverse=True):
                     if show_conf:
                         st.markdown(f"""
-                        <div class='entity-box' style='animation-delay: {delay}s;'>
+                        <div class='entity-box'>
                             <span class='entity-name'>{nama}</span>
-                            <span class='entity-type person-tag'>PERSON</span>
+                            <span class='person-tag'>PERSON</span>
                             <div style='margin-top: 0.5rem; font-size: 0.85rem; color: #666;'>
                                 🔹 Confidence: <strong>{score:.4f}</strong>
                             </div>
@@ -1017,15 +1020,14 @@ elif menu == "📊 Analisis":
                 st.info("ℹ️ Tidak ada entitas individu yang terdeteksi.")
         
         with col_org:
-            st.markdown("### 🏢 Daftar Instansi")
+            st.markdown("### 🏢 Daftar Instansi (ORGANIZATION)")
             if organizations:
-                for idx, (instansi, score) in enumerate(sorted(organizations.items(), key=lambda x: x[1], reverse=True)):
-                    delay = min(idx * 0.1, 0.5)
+                for instansi, score in sorted(organizations.items(), key=lambda x: x[1], reverse=True):
                     if show_conf:
                         st.markdown(f"""
-                        <div class='entity-box' style='animation-delay: {delay}s;'>
+                        <div class='entity-box'>
                             <span class='entity-name'>{instansi}</span>
-                            <span class='entity-type org-tag'>ORGANIZATION</span>
+                            <span class='org-tag'>ORGANIZATION</span>
                             <div style='margin-top: 0.5rem; font-size: 0.85rem; color: #666;'>
                                 🔹 Confidence: <strong>{score:.4f}</strong>
                             </div>
@@ -1034,7 +1036,6 @@ elif menu == "📊 Analisis":
             else:
                 st.info("ℹ️ Tidak ada entitas instansi yang terdeteksi.")
         
-        # Export dengan Animasi
         st.divider()
         st.markdown("### 💾 Export Hasil")
         
@@ -1082,34 +1083,23 @@ elif menu == "📜 Riwayat":
             fig_tren = go.Figure()
             
             fig_tren.add_trace(go.Scatter(
-                x=df_history['time_short'],
-                y=df_history['individuals_count'],
-                mode='lines+markers+text',
-                name='Individu',
-                line=dict(color='#667eea', width=3),
-                marker=dict(size=8, symbol='circle'),
-                text=df_history['individuals_count'],
-                textposition='top center'
+                x=df_history['time_short'], y=df_history['individuals_count'],
+                mode='lines+markers+text', name='Individu',
+                line=dict(color='#667eea', width=3), marker=dict(size=8, symbol='circle'),
+                text=df_history['individuals_count'], textposition='top center'
             ))
             
             fig_tren.add_trace(go.Scatter(
-                x=df_history['time_short'],
-                y=df_history['organizations_count'],
-                mode='lines+markers+text',
-                name='Instansi',
-                line=dict(color='#764ba2', width=3),
-                marker=dict(size=8, symbol='square'),
-                text=df_history['organizations_count'],
-                textposition='bottom center'
+                x=df_history['time_short'], y=df_history['organizations_count'],
+                mode='lines+markers+text', name='Instansi',
+                line=dict(color='#764ba2', width=3), marker=dict(size=8, symbol='square'),
+                text=df_history['organizations_count'], textposition='bottom center'
             ))
             
             fig_tren.update_layout(
                 title="📊 Tren Jumlah Entitas Terdeteksi",
-                xaxis_title="⏰ Waktu Analisis",
-                yaxis_title="🔢 Jumlah Entitas",
-                height=450,
-                hovermode='x unified',
-                plot_bgcolor='rgba(0,0,0,0.02)',
+                xaxis_title="⏰ Waktu Analisis", yaxis_title="🔢 Jumlah Entitas",
+                height=450, hovermode='x unified', plot_bgcolor='rgba(0,0,0,0.02)',
                 font=dict(family='Inter, sans-serif')
             )
             
@@ -1119,11 +1109,9 @@ elif menu == "📜 Riwayat":
             
             with col_pie1:
                 fig_pie = px.pie(
-                    values=[total_individu, total_instansi],
-                    names=['Individu', 'Instansi'],
+                    values=[total_individu, total_instansi], names=['Individu', 'Instansi'],
                     title='🥧 Total Distribusi Keseluruhan',
-                    color_discrete_map={'Individu': '#667eea', 'Instansi': '#764ba2'},
-                    hole=0.4
+                    color_discrete_map={'Individu': '#667eea', 'Instansi': '#764ba2'}, hole=0.4
                 )
                 fig_pie.update_traces(textinfo='percent+label', hoverinfo='label+percent+value')
                 st.plotly_chart(fig_pie, use_container_width=True)
@@ -1142,8 +1130,7 @@ elif menu == "📜 Riwayat":
         with tab2:
             st.markdown("### 🏆 Top 10 Entitas Berdasarkan Confidence Score")
             
-            all_ind = {}
-            all_org = {}
+            all_ind, all_org = {}, {}
             
             for analysis in st.session_state.analysis_history:
                 for nama, score in analysis['individuals'].items():
@@ -1159,12 +1146,7 @@ elif menu == "📜 Riwayat":
                 if all_ind:
                     df_ind = pd.DataFrame(list(all_ind.items()), columns=['Nama', 'Score'])
                     df_ind = df_ind.sort_values('Score', ascending=False).head(10)
-                    fig = px.bar(
-                        df_ind, x='Score', y='Nama', orientation='h',
-                        title='👤 Top 10 Individu',
-                        color='Score',
-                        color_continuous_scale='Blues'
-                    )
+                    fig = px.bar(df_ind, x='Score', y='Nama', orientation='h', title='👤 Top 10 Individu', color='Score', color_continuous_scale='Blues')
                     fig.update_layout(height=450, yaxis={'categoryorder': 'total ascending'})
                     st.plotly_chart(fig, use_container_width=True)
             
@@ -1172,12 +1154,7 @@ elif menu == "📜 Riwayat":
                 if all_org:
                     df_org = pd.DataFrame(list(all_org.items()), columns=['Instansi', 'Score'])
                     df_org = df_org.sort_values('Score', ascending=False).head(10)
-                    fig = px.bar(
-                        df_org, x='Score', y='Instansi', orientation='h',
-                        title='🏢 Top 10 Instansi',
-                        color='Score',
-                        color_continuous_scale='Purples'
-                    )
+                    fig = px.bar(df_org, x='Score', y='Instansi', orientation='h', title='🏢 Top 10 Instansi', color='Score', color_continuous_scale='Purples')
                     fig.update_layout(height=450, yaxis={'categoryorder': 'total ascending'})
                     st.plotly_chart(fig, use_container_width=True)
         
@@ -1191,8 +1168,7 @@ elif menu == "📜 Riwayat":
             
             st.dataframe(
                 df_display.sort_values('⏰ Waktu', ascending=False),
-                use_container_width=True,
-                hide_index=True,
+                use_container_width=True, hide_index=True,
                 column_config={
                     "⏰ Waktu": st.column_config.TextColumn(width="medium"),
                     "📰 Sumber": st.column_config.TextColumn(width="small"),
@@ -1202,36 +1178,21 @@ elif menu == "📜 Riwayat":
                 }
             )
             
-            # Export Semua Histori
             if st.button("📥 Export Semua Data (CSV)", type="secondary", use_container_width=True):
                 export_data = []
                 for analysis in st.session_state.analysis_history:
                     for nama, score in analysis['individuals'].items():
-                        export_data.append({
-                            'Timestamp': analysis['timestamp'],
-                            'Source': analysis.get('source', 'Manual'),
-                            'Tipe': 'PERSON',
-                            'Nama': nama,
-                            'Score': f"{score:.4f}"
-                        })
+                        export_data.append({'Timestamp': analysis['timestamp'], 'Source': analysis.get('source', 'Manual'), 'Tipe': 'PERSON', 'Nama': nama, 'Score': f"{score:.4f}"})
                     for org, score in analysis['organizations'].items():
-                        export_data.append({
-                            'Timestamp': analysis['timestamp'],
-                            'Source': analysis.get('source', 'Manual'),
-                            'Tipe': 'ORGANIZATION',
-                            'Nama': org,
-                            'Score': f"{score:.4f}"
-                        })
+                        export_data.append({'Timestamp': analysis['timestamp'], 'Source': analysis.get('source', 'Manual'), 'Tipe': 'ORGANIZATION', 'Nama': org, 'Score': f"{score:.4f}"})
                 
                 df_export = pd.DataFrame(export_data)
                 csv = df_export.to_csv(index=False, encoding='utf-8-sig')
                 
                 st.download_button(
-                    label="⬇️ Download Sekarang",
-                    data=csv,
+                    label="⬇️ Download Sekarang", data=csv,
                     file_name=f"all_ner_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv",
-                    use_container_width=True
+                    mime="text/csv", use_container_width=True
                 )
             
             if st.button("🗑️ Hapus Semua Riwayat", type="secondary", use_container_width=True):
@@ -1266,15 +1227,15 @@ elif menu == "ℹ️ Tentang":
             <h3 style='color: #667eea; margin-bottom: 1rem;'>🎯 Tujuan Aplikasi</h3>
             <p style='color: #555; line-height: 1.7;'>
                 Aplikasi ini mengimplementasikan <strong>Named Entity Recognition (NER)</strong> 
-                berbasis model IndoBERT untuk ekstraksi otomatis entitas individu dan instansi 
-                dari berita korupsi di Indonesia.
+                berbasis <strong>Custom IndoBERT</strong> yang telah di-fine-tune khusus untuk 
+                ekstraksi otomatis entitas individu dan instansi dari berita korupsi di Indonesia.
             </p>
             <h4 style='color: #667eea; margin: 1.2rem 0 0.5rem;'>✨ Manfaat:</h4>
             <ul style='color: #555; line-height: 1.8; padding-left: 1.2rem;'>
-                <li>Mempercepat analisis berita korupsi</li>
-                <li>Mengidentifikasi pelaku dan institusi terkait</li>
-                <li>Mendukung penelitian dan jurnalisme data</li>
-                <li>Otomatisasi ekstraksi informasi penting</li>
+                <li>Mempercepat analisis berita korupsi dengan akurasi tinggi</li>
+                <li>Mengidentifikasi pelaku dan institusi terkait secara otomatis</li>
+                <li>Mendukung penelitian dan jurnalisme data investigatif</li>
+                <li>Otomatisasi ekstraksi informasi penting dari teks berita</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
@@ -1284,7 +1245,7 @@ elif menu == "ℹ️ Tentang":
             <h3 style='color: #667eea; margin-bottom: 1rem;'>🛠️ Teknologi</h3>
             <ul style='color: #555; line-height: 2; padding-left: 1.2rem;'>
                 <li><strong>Framework:</strong> Streamlit</li>
-                <li><strong>Model NLP:</strong> IndoBERT NER</li>
+                <li><strong>Model NLP:</strong> Custom IndoBERT NER (Fine-tuned)</li>
                 <li><strong>Library:</strong> Transformers (Hugging Face)</li>
                 <li><strong>Visualisasi:</strong> Plotly Interactive Charts</li>
                 <li><strong>Web Scraping:</strong> BeautifulSoup + Requests</li>
@@ -1298,11 +1259,12 @@ elif menu == "ℹ️ Tentang":
         <div class='metric-card' style='text-align: left;'>
             <h3 style='color: #667eea; margin-bottom: 1rem;'>📊 Spesifikasi Model</h3>
             <div style='background: rgba(243,229,245,0.6); padding: 1rem; border-radius: 12px; margin: 0.5rem 0;'>
-                <strong>🤖 Model:</strong> cahya/bert-base-indonesian-NER<br>
+                <strong>🤖 Model:</strong> Custom IndoBERT NER (Fine-tuned)<br>
                 <strong>🗣️ Bahasa:</strong> Indonesia<br>
                 <strong>🎯 Entitas:</strong> PERSON, ORGANIZATION<br>
                 <strong>🏗️ Arsitektur:</strong> BERT Base (12-layer, 768-hidden, 12-heads)<br>
-                <strong>📚 Training:</strong> Indonesian Corpus
+                <strong>📚 Training:</strong> Custom Dataset Berita Korupsi Indonesia<br>
+                <strong>📁 Lokasi:</strong> <code>models/checkpoint-80/</code>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1311,7 +1273,7 @@ elif menu == "ℹ️ Tentang":
         <div class='metric-card' style='text-align: left;'>
             <h3 style='color: #667eea; margin-bottom: 1rem;'>👨‍💻 Developer</h3>
             <p style='color: #555; line-height: 1.7;'>
-                <strong>Proyek NLP - 2026</strong><br>
+                <strong>By kelompok 4</strong><br>
                 Universitas [Nama Universitas]<br>
                 Mata Kuliah: Natural Language Processing<br><br>
                 <strong>By Kelompok 4</strong>
@@ -1320,18 +1282,6 @@ elif menu == "ℹ️ Tentang":
         """, unsafe_allow_html=True)
     
     st.divider()
-    
-    st.markdown("""
-    <div style='background: rgba(255,255,255,0.8); padding: 1.5rem; border-radius: 16px; border-left: 5px solid #667eea;'>
-        <h3 style='color: #667eea; margin-bottom: 1rem;'>📚 Referensi Akademis</h3>
-        <ol style='color: #555; line-height: 2; padding-left: 1.5rem;'>
-            <li>Devlin, J., et al. (2019). <em>BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding</em>. NAACL-HLT.</li>
-            <li>Cahya, W. (2021). <em>IndoBERT: Indonesian BERT Model</em>. GitHub Repository.</li>
-            <li>Hugging Face. (2024). <em>Transformers Documentation</em>. https://huggingface.co/docs</li>
-            <li>Streamlit. (2024). <em>Streamlit Documentation</em>. https://docs.streamlit.io</li>
-        </ol>
-    </div>
-    """, unsafe_allow_html=True)
 
 # ==========================================
 # 8. FOOTER DENGAN ANIMASI
@@ -1340,7 +1290,6 @@ st.markdown("<div style='height: 3rem;'></div>", unsafe_allow_html=True)
 st.markdown("""
 <div class='app-footer'>
     <p>✨ © 2026 Kelompok 4 | NER Korupsi Indonesia</p>
-    <p>Built with ❤️ using <strong>Streamlit</strong> & <strong>IndoBERT</strong></p>
     <p style='font-size: 0.85rem; color: #999;'>Proyek Mata Kuliah Natural Language Processing</p>
 </div>
 """, unsafe_allow_html=True)
