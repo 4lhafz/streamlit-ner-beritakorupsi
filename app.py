@@ -424,7 +424,7 @@ def load_custom_model():
     Load model custom langsung dari root folder 'models'
     """
     # Mengarah langsung ke folder "models" utama tempat file berada
-    custom_model_path = "checkpoint-80"
+    custom_model_path = "models"
     
     # Validasi: Folder model harus ada
     if not os.path.exists(custom_model_path):
