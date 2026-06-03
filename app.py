@@ -1266,9 +1266,7 @@ elif menu == "ℹ️ Tentang":
             <h3 style='color: #667eea; margin-bottom: 1rem;'>👨‍💻 Developer</h3>
             <p style='color: #555; line-height: 1.7;'>
                 <strong>By kelompok 4</strong><br>
-                Universitas [Nama Universitas]<br>
                 Mata Kuliah: Natural Language Processing<br><br>
-                <strong>By Kelompok 4</strong>
             </p>
         </div>
         """, unsafe_allow_html=True)
