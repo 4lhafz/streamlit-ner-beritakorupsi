@@ -419,91 +419,67 @@ if 'current_results' not in st.session_state:
 # 4. MEMUAT MODEL CUSTOM NER (TANPA FALLBACK)
 # ==========================================
 @st.cache_resource
+@st.cache_resource
 def load_custom_model():
-    """
-    Load HANYA model custom dari folder 'models' - TANPA FALLBACK
-    Jika model tidak ditemukan atau gagal load, aplikasi akan berhenti
-    """
-    # 🔑 KONFIGURASI MODEL CUSTOM - SESUAIKAN DENGAN HASIL TRAINING ANDA
-    MODEL_FOLDER = "models"  # Nama folder model
-    CHECKPOINT_NUMBER = 80 # Checkpoint terbaik (sesuaikan dengan training Anda)
-    
-    custom_model_path = os.path.join(MODEL_FOLDER, f"checkpoint-{CHECKPOINT_NUMBER}")
-    
-    # Validasi: Folder model harus ada
-    if not os.path.exists(custom_model_path):
-        st.error(f"""
-        ❌ **Model Custom Tidak Ditemukan!**
-        
-        Path yang dicari: `{custom_model_path}`
-        
-        **Solusi:**
-        1. Pastikan folder `models/` ada di direktori yang sama dengan app.py
-        2. Pastikan checkpoint-{CHECKPOINT_NUMBER} sudah di-extract di dalam folder models/
-        3. File yang harus ada: config.json, model.safetensors (atau pytorch_model.bin), tokenizer.json
-        """)
-        st.stop()
-    
-    # Validasi: File konfigurasi model harus ada
-    required_files = ['config.json', 'tokenizer.json', 'tokenizer_config.json']
-    missing_files = [f for f in required_files if not os.path.exists(os.path.join(custom_model_path, f))]
-    
-    if missing_files:
-        st.error(f"""
-        ❌ **File Model Tidak Lengkap!**
-        
-        File yang hilang: {', '.join(missing_files)}
-        
-        **Solusi:**
-        1. Pastikan semua file hasil training sudah di-copy ke folder checkpoint
-        2. Gunakan `model.save_pretrained()` dan `tokenizer.save_pretrained()` saat export dari Colab
-        """)
-        st.stop()
-    
-    try:
-        with st.spinner(f"🔄 Memuat model custom dari: {custom_model_path}"):
-            # Load tokenizer dan model
-            tokenizer = AutoTokenizer.from_pretrained(custom_model_path)
-            model = AutoModelForTokenClassification.from_pretrained(custom_model_path)
-            
-            # Buat pipeline NER
-            nlp_pipeline = pipeline(
-                "ner",
-                model=model,
-                tokenizer=tokenizer,
-                aggregation_strategy="simple",
-                device=-1  # CPU (ubah ke 0 jika ada GPU)
-            )
-            
-            return nlp_pipeline
-            
-    except Exception as e:
-        st.error(f"""
-        ❌ **Gagal Memuat Model Custom!**
-        
-        Error: {str(e)}
-        
-        **Kemungkinan Penyebab:**
-        1. File model corrupt atau tidak kompatibel
-        2. Versi transformers tidak sesuai dengan saat training
-        3. Missing dependencies
-        
-        **Solusi:**
-        1. Pastikan requirements.txt sudah terinstall: `pip install -r requirements.txt`
-        2. Cek versi transformers: harus sama dengan saat training di Colab
-        3. Re-export model dari Colab dengan `save_pretrained()`
-        """)
-        import traceback
-        st.code(traceback.format_exc())
-        st.stop()
-
-# Load model custom saat aplikasi dimulai (TANPA FALLBACK)
-with st.spinner("✨ Memuat model custom NER... Mohon tunggu..."):
-    nlp_ner = load_custom_model()
-
-# Simpan status model di session state
-if 'model_loaded' not in st.session_state:
-    st.session_state.model_loaded = True
+ """
+ Load model custom langsung dari root folder 'models'
+ """
+ # REVISI: Mengubah jalur langsung ke folder "models" utama, bukan ke checkpoint-80
+ custom_model_path = "checkpoint-80"
+ 
+ # Validasi: Folder model harus ada
+ if not os.path.exists(custom_model_path):
+     st.error(f"""
+      **Model Custom Tidak Ditemukan!**
+     
+     Path yang dicari: `{custom_model_path}`
+     
+     **Solusi:**
+     1. Pastikan folder `models/` ada di direktori yang sama dengan app.py
+     2. Pastikan file model utama sudah berada langsung di dalam folder models/
+     """)
+     st.stop()
+ 
+ # Validasi: File konfigurasi model harus ada di folder models/
+ required_files = ['config.json', 'tokenizer.json', 'tokenizer_config.json']
+ missing_files = [f for f in required_files if not os.path.exists(os.path.join(custom_model_path, f))]
+ 
+ if missing_files:
+     st.error(f"""
+      **File Model Tidak Lengkap!**
+     
+     File yang hilang di folder `models/`: {', '.join(missing_files)}
+     
+     **Solusi:**
+     1. Pastikan semua file penunjang model (config, tokenizer) sudah dipindahkan ke folder models/.
+     """)
+     st.stop()
+ 
+ try:
+     with st.spinner(f" Memuat model custom dari: {custom_model_path}"):
+         # Load tokenizer dan model dari root folder models
+         tokenizer = AutoTokenizer.from_pretrained(custom_model_path)
+         model = AutoModelForTokenClassification.from_pretrained(custom_model_path)
+         
+         # Buat pipeline NER
+         nlp_pipeline = pipeline(
+             "ner",
+             model=model,
+             tokenizer=tokenizer,
+             aggregation_strategy="simple",
+             device=-1 # CPU
+         )
+         
+         return nlp_pipeline
+ 
+ except Exception as e:
+     st.error(f"""
+      **Gagal Memuat Model Custom!**
+      Error: {str(e)}
+     """)
+     import traceback
+     st.code(traceback.format_exc())
+     st.stop()
 
 # ==========================================
 # 5. FUNGSI HELPER
