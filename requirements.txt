@@ -4,4 +4,8 @@ torch>=2.0.0
 pandas>=1.5.0
 plotly>=5.15.0
 requests>=2.28.0
+<<<<<<< HEAD
 beautifulsoup4>=4.11.0
+=======
+beautifulsoup4>=4.11.0
+>>>>>>> daa5569 (first commit)
